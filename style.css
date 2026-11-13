@@ -469,6 +469,24 @@ textarea:focus, input:focus { border-color: rgba(180, 85, 45, 0.55); }
   color: var(--soft);
 }
 
+/* 云端保存状态 */
+.save-state {
+  margin: 10px 0 4px;
+  text-align: center;
+  font-size: 17px;
+  line-height: 1.5;
+  color: var(--soft);
+  min-height: 26px;
+}
+
+.save-state.ok {
+  color: #3f7d58;
+}
+
+.save-state.warn {
+  color: #b5703a;
+}
+
 /* 页脚 */
 .footer {
   margin-top: 30px;

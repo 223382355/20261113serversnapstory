@@ -12,7 +12,8 @@
     randomQueue: [],
     randomBusy: false,
     copyRound: 0,
-    copyBusy: false
+    copyBusy: false,
+    serverUrl: ""
   };
 
   // ---------------- 通用 UI ----------------
@@ -751,18 +752,41 @@
     });
   }
 
+  // 更新海报保存状态提示
+  function setSaveState(kind, text) {
+    const el = $("save-state");
+    if (!el) return;
+    el.className = "save-state" + (kind ? " " + kind : "");
+    el.textContent = text || "";
+  }
+
   // 异步上传到自建后端（若已配置）。不阻塞主流程，失败静默降级。
   function uploadToBackend(recipe, dataUrl) {
-    if (!window.SnapBackend || !SnapBackend.isConfigured()) return;
-    if (!recipe || !recipe.syncKey || !dataUrl) return;
+    if (!window.SnapBackend || !SnapBackend.isConfigured()) {
+      setSaveState("", "已保存在这台手机上，家人扫码可查看");
+      return Promise.resolve("");
+    }
+    if (!recipe || !recipe.syncKey || !dataUrl) return Promise.resolve("");
+
+    setSaveState("", "正在同步到云端…");
     const userId = (typeof SnapStory.getUserId === "function") ? SnapStory.getUserId() : "";
-    SnapBackend.uploadPoster(recipe.syncKey, userId, dataUrl).then((url) => {
-      if (url) console.log("海报已同步到后端：", url);
-    }).catch(() => { /* 静默降级，家人仍可看文字版 */ });
+    return SnapBackend.uploadPoster(recipe.syncKey, userId, dataUrl).then((url) => {
+      if (url) {
+        state.serverUrl = url;
+        setSaveState("ok", "已保存到云端，家人扫码永久可见");
+      } else {
+        setSaveState("warn", "云端暂时没连上，已存本机；家人扫码 3 小时内可见");
+      }
+      return url;
+    }).catch(() => {
+      setSaveState("warn", "云端暂时没连上，已存本机；家人扫码 3 小时内可见");
+      return "";
+    });
   }
 
   async function showResult(recipe, ai) {
     state.recipe = recipe;
+    state.serverUrl = "";
     resetRandomCycle();
     await SnapStory.renderPoster(posterCanvas, recipe);
 
@@ -867,7 +891,11 @@
       const dataUrl = $("poster-img").src;
       if (dataUrl && dataUrl.indexOf("data:") === 0) uploadToBackend(state.recipe, dataUrl);
     }
-    toast("正在保存，若没反应请长按海报保存");
+    if (state.serverUrl) {
+      toast("已存到云端。长按海报可另存到手机相册");
+    } else {
+      toast("长按海报可保存到手机相册");
+    }
   });
 
   function resetRandomCycle() {
