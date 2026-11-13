@@ -584,7 +584,7 @@ textarea:focus, input:focus { border-color: rgba(180, 85, 45, 0.55); }
   text-align: left;
   cursor: pointer;
 }
-.gallery-thumb { display: block; width: 100%; aspect-ratio: 1080 / 1820; background: #e9e2d5; }
+.gallery-thumb { display: block; width: 100%; aspect-ratio: 1080 / 1820; background: #e9e2d5; object-fit: cover; }
 .gallery-meta { display: block; padding: 8px 10px 10px; }
 .gallery-meta strong { display: block; font-size: 16px; color: var(--ink); }
 .gallery-meta small { display: block; margin-top: 2px; font-size: 14px; color: var(--soft); }

@@ -1552,6 +1552,7 @@
         ? (item.dateText ? `${item.dateText} · 云端` : "云端保存")
         : `${item.dateText || ""} · ${count} 条留言`;
       meta.innerHTML = `<strong>${escapeHtml(item.title || "美好时光")}</strong><small>${escapeHtml(sub)}</small>`;
+      card.appendChild(meta);
 
       card.addEventListener("click", () => openHistoryAt(idx));
       grid.appendChild(card);
