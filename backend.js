@@ -14,6 +14,9 @@
   let baseUrl = "";
   let online = null;       // null=未探测, true/false
   let onlineExpire = 0;    // 探测结果缓存 30 秒
+  let lastError = "";      // 最近一次失败原因：timeout / network / http-404 ...
+
+  function setLastError(msg) { lastError = msg || ""; }
 
   function readBase() {
     try { return localStorage.getItem(STORAGE_BASE + ".base") || ""; } catch (e) { return ""; }
@@ -54,10 +57,12 @@
       const ok = res.ok;
       online = ok;
       onlineExpire = now + (ok ? 60000 : 20000);
+      setLastError(ok ? "" : "http-" + res.status);
       return ok;
     } catch (e) {
       online = false;
       onlineExpire = now + 20000;
+      setLastError(e && e.name === "AbortError" ? "timeout" : "network");
       return false;
     } finally {
       if (timer) clearTimeout(timer);
@@ -85,18 +90,22 @@
       if (!res.ok) {
         online = false;
         onlineExpire = Date.now() + 20000;
+        setLastError("http-" + res.status);
         return "";
       }
       const data = await res.json().catch(() => ({}));
       online = true;
       onlineExpire = Date.now() + 60000;
+      setLastError("");
       if (data && data.ok && data.url) {
         return baseUrl + data.url;
       }
+      setLastError("bad-response");
       return "";
     } catch (e) {
       online = false;
       onlineExpire = Date.now() + 20000;
+      setLastError(e && e.name === "AbortError" ? "timeout" : "network");
       return "";
     } finally {
       if (timer) clearTimeout(timer);
@@ -174,6 +183,7 @@
   global.SnapBackend = {
     setBase, getBase, isConfigured,
     health, uploadPoster, posterUrl,
-    fetchComments, publishComment, subscribeComments
+    fetchComments, publishComment, subscribeComments,
+    getLastError: function () { return lastError; }
   };
 })(window);

@@ -775,13 +775,24 @@
         state.serverUrl = url;
         setSaveState("ok", "已保存到云端，家人扫码永久可见");
       } else {
-        setSaveState("warn", "云端暂时没连上，已存本机；家人扫码 3 小时内可见");
+        const reason = (SnapBackend.getLastError && SnapBackend.getLastError()) || "";
+        setSaveState("warn", "云端没连上（" + reasonText(reason) + "），已存本机；家人扫码 3 小时内可见");
       }
       return url;
     }).catch(() => {
-      setSaveState("warn", "云端暂时没连上，已存本机；家人扫码 3 小时内可见");
+      setSaveState("warn", "云端没连上（网络错误），已存本机；家人扫码 3 小时内可见");
       return "";
     });
+  }
+
+  // 把技术错误码翻译成老人和你能看懂的话
+  function reasonText(code) {
+    if (code === "timeout") return "连接超时，隧道可能断了";
+    if (code === "network") return "网络不通，地址可能已失效";
+    if (code === "http-404") return "地址能用但不是这个服务";
+    if (code === "http-502" || code === "http-503" || code === "http-504") return "隧道在线但后端没响应";
+    if (code.indexOf("http-") === 0) return "服务器返回 " + code.slice(5);
+    return "未知原因";
   }
 
   async function showResult(recipe, ai) {
@@ -1293,10 +1304,25 @@
   });
 
   // ---------------- 后端服务器配置 ----------------
+  // 地址规范化 + 基本校验，返回错误说明（空串表示通过）
+  function normalizeBackendUrl(raw) {
+    let url = String(raw || "").trim();
+    if (!url) return { url: "", error: "请先填地址" };
+    if (!/^https?:\/\//i.test(url)) url = "https://" + url;
+    url = url.replace(/\/+$/, "");
+    // 本地打开页面时，https 也能访问 http 后端；线上页面是 https，http 后端会被浏览器拦截
+    if (location.protocol === "https:" && url.indexOf("http://") === 0) {
+      return { url, error: "线上页面是 https，后端地址必须是 https:// 开头，否则浏览器会拦截" };
+    }
+    return { url, error: "" };
+  }
+
   $("backend-save").addEventListener("click", () => {
-    const url = ($("backend-url").value || "").trim();
-    if (!url) { toast("请先填地址"); return; }
-    if (window.SnapBackend) SnapBackend.setBase(url);
+    const r = normalizeBackendUrl($("backend-url").value);
+    if (r.error && !r.url) { toast(r.error); return; }
+    if (r.error) { toast(r.error); return; }
+    $("backend-url").value = r.url;
+    if (window.SnapBackend) SnapBackend.setBase(r.url);
     toast("后端地址已保存");
   });
   $("backend-clear").addEventListener("click", () => {
@@ -1305,12 +1331,19 @@
     toast("已清除后端地址，恢复本机保存");
   });
   $("backend-test").addEventListener("click", async () => {
-    const url = ($("backend-url").value || "").trim();
-    if (!url) { toast("请先填地址"); return; }
-    if (window.SnapBackend) SnapBackend.setBase(url);
-    toast("正在测试连接…");
+    const r = normalizeBackendUrl($("backend-url").value);
+    if (r.error) { toast(r.error); return; }
+    $("backend-url").value = r.url;
+    if (window.SnapBackend) SnapBackend.setBase(r.url);
+
+    toast("正在测试，最多等 6 秒…");
     const ok = window.SnapBackend ? await SnapBackend.health(true) : false;
-    toast(ok ? "连接成功，后端在线" : "连接失败，请检查地址和网络");
+    if (ok) {
+      toast("连接成功，后端在线");
+    } else {
+      const code = (SnapBackend.getLastError && SnapBackend.getLastError()) || "";
+      toast("连接失败：" + reasonText(code));
+    }
   });
 
   $("user-id-copy").addEventListener("click", async () => {
