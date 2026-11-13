@@ -37,14 +37,14 @@
     return !!getBase();
   }
 
-  // 健康检查，超时 2 秒，结果缓存 30 秒
+  // 健康检查，超时 6 秒，结果缓存（成功 60 秒 / 失败 20 秒）
   async function health(force) {
     if (!isConfigured()) return false;
     const now = Date.now();
     if (!force && online !== null && now < onlineExpire) return online;
 
     const controller = (typeof AbortController !== "undefined") ? new AbortController() : null;
-    const timer = controller ? setTimeout(() => controller.abort(), 2000) : null;
+    const timer = controller ? setTimeout(() => controller.abort(), 6000) : null;
     try {
       const res = await fetch(`${baseUrl}/health`, {
         method: "GET",
@@ -53,11 +53,11 @@
       });
       const ok = res.ok;
       online = ok;
-      onlineExpire = now + 30000;
+      onlineExpire = now + (ok ? 60000 : 20000);
       return ok;
     } catch (e) {
       online = false;
-      onlineExpire = now + 15000; // 失败后短一点再试
+      onlineExpire = now + 20000;
       return false;
     } finally {
       if (timer) clearTimeout(timer);
@@ -67,8 +67,10 @@
   // 上传海报（dataURL），成功返回后端 URL，失败返回 ""
   async function uploadPoster(syncKey, userId, dataUrl) {
     if (!isConfigured()) return "";
-    const ok = await health(false);
-    if (!ok) return "";
+    if (!syncKey || !dataUrl) return "";
+    // 直接尝试上传，省掉一次 health 请求（免费隧道请求数有限）
+    const controller = (typeof AbortController !== "undefined") ? new AbortController() : null;
+    const timer = controller ? setTimeout(() => controller.abort(), 20000) : null;
     try {
       const res = await fetch(`${baseUrl}/upload`, {
         method: "POST",
@@ -77,16 +79,27 @@
           syncKey: String(syncKey || ""),
           userId: String(userId || ""),
           image: String(dataUrl || "")
-        })
+        }),
+        signal: controller ? controller.signal : undefined
       });
-      if (!res.ok) return "";
+      if (!res.ok) {
+        online = false;
+        onlineExpire = Date.now() + 20000;
+        return "";
+      }
       const data = await res.json().catch(() => ({}));
+      online = true;
+      onlineExpire = Date.now() + 60000;
       if (data && data.ok && data.url) {
         return baseUrl + data.url;
       }
       return "";
     } catch (e) {
+      online = false;
+      onlineExpire = Date.now() + 20000;
       return "";
+    } finally {
+      if (timer) clearTimeout(timer);
     }
   }
 
@@ -99,8 +112,6 @@
   // 从后端取留言列表
   async function fetchComments(syncKey) {
     if (!isConfigured() || !syncKey) return [];
-    const ok = await health(false);
-    if (!ok) return [];
     try {
       const res = await fetch(`${baseUrl}/comments/${encodeURIComponent(syncKey)}`, {
         method: "GET",
@@ -117,8 +128,6 @@
   // 往后端发一条留言
   async function publishComment(syncKey, comment) {
     if (!isConfigured() || !syncKey) return false;
-    const ok = await health(false);
-    if (!ok) return false;
     try {
       const res = await fetch(`${baseUrl}/comments/${encodeURIComponent(syncKey)}`, {
         method: "POST",
@@ -135,7 +144,7 @@
     }
   }
 
-  // 订阅后端留言（轮询，每 4 秒拉一次）
+  // 订阅后端留言（轮询，每 20 秒拉一次，减少免费隧道请求数）
   function subscribeComments(syncKey, onComment) {
     if (!isConfigured() || !syncKey || typeof onComment !== "function") {
       return function () {};
@@ -152,12 +161,12 @@
           onComment(c);
         }
       });
-      if (!stopped) setTimeout(tick, 4000);
+      if (!stopped) setTimeout(tick, 20000);
     };
     // 首次立即拉一次建立 lastAt 基线
     fetchComments(syncKey).then((list) => {
       list.forEach((c) => { lastAt = Math.max(lastAt, Number(c.at) || 0); });
-      if (!stopped) setTimeout(tick, 4000);
+      if (!stopped) setTimeout(tick, 20000);
     });
     return function () { stopped = true; };
   }
