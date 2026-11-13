@@ -70,7 +70,7 @@
   }
 
   // 上传海报（dataURL），成功返回后端 URL，失败返回 ""
-  async function uploadPoster(syncKey, userId, dataUrl) {
+  async function uploadPoster(syncKey, userId, dataUrl, meta) {
     if (!isConfigured()) return "";
     if (!syncKey || !dataUrl) return "";
     // 直接尝试上传，省掉一次 health 请求（免费隧道请求数有限）
@@ -83,7 +83,8 @@
         body: JSON.stringify({
           syncKey: String(syncKey || ""),
           userId: String(userId || ""),
-          image: String(dataUrl || "")
+          image: String(dataUrl || ""),
+          meta: (meta && typeof meta === "object") ? meta : {}
         }),
         signal: controller ? controller.signal : undefined
       });
@@ -107,6 +108,36 @@
       onlineExpire = Date.now() + 20000;
       setLastError(e && e.name === "AbortError" ? "timeout" : "network");
       return "";
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  }
+
+  // 列出某个身份码在云端的所有海报（换设备后恢复列表用）
+  // 8 秒超时；后端不可用时返回空数组，绝不影响本地列表
+  async function listPosters(userId) {
+    if (!isConfigured() || !userId) return [];
+    const controller = (typeof AbortController !== "undefined") ? new AbortController() : null;
+    const timer = controller ? setTimeout(() => controller.abort(), 8000) : null;
+    try {
+      const res = await fetch(`${baseUrl}/users/${encodeURIComponent(userId)}/posters`, {
+        method: "GET",
+        cache: "no-store",
+        signal: controller ? controller.signal : undefined
+      });
+      if (!res.ok) return [];
+      const data = await res.json().catch(() => ({}));
+      if (!data || !Array.isArray(data.posters)) return [];
+      return data.posters
+        .filter((p) => p && p.syncKey)
+        .map((p) => ({
+          syncKey: String(p.syncKey),
+          url: baseUrl + String(p.url || `/posters/${p.syncKey}.jpg`),
+          at: Number(p.at) || 0,
+          meta: (p.meta && typeof p.meta === "object") ? p.meta : {}
+        }));
+    } catch (e) {
+      return [];
     } finally {
       if (timer) clearTimeout(timer);
     }
@@ -182,7 +213,7 @@
 
   global.SnapBackend = {
     setBase, getBase, isConfigured,
-    health, uploadPoster, posterUrl,
+    health, uploadPoster, posterUrl, listPosters,
     fetchComments, publishComment, subscribeComments,
     getLastError: function () { return lastError; }
   };

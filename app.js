@@ -770,7 +770,14 @@
 
     setSaveState("", "正在同步到云端…");
     const userId = (typeof SnapStory.getUserId === "function") ? SnapStory.getUserId() : "";
-    return SnapBackend.uploadPoster(recipe.syncKey, userId, dataUrl).then((url) => {
+    return SnapBackend.uploadPoster(recipe.syncKey, userId, dataUrl, {
+      title: recipe.title || "",
+      dateText: recipe.dateText || "",
+      style: recipe.style || "",
+      createdAt: recipe.createdAt || Date.now(),
+      weather: recipe.weather || "",
+      location: recipe.location || ""
+    }).then((url) => {
       if (url) {
         state.serverUrl = url;
         setSaveState("ok", "已保存到云端，家人扫码永久可见");
@@ -1431,6 +1438,16 @@
   let galleryItems = [];
   let historyIndex = 0;
 
+  function remoteViewUrl(item) {
+    const u = new URL("view.html", location.href);
+    const params = ["k=" + encodeURIComponent(item.syncKey || "")];
+    if (window.SnapBackend && SnapBackend.getBase()) {
+      params.push("b=" + encodeURIComponent(SnapBackend.getBase()));
+    }
+    u.hash = params.join("&");
+    return u.href;
+  }
+
   async function openHistoryAt(index) {
     const total = galleryItems.length;
     if (!total) return;
@@ -1442,7 +1459,7 @@
     $("gallery-list-view").classList.add("hidden");
     $("gallery-detail-view").classList.remove("hidden");
     $("history-title").textContent = `${recipe.title || "海报"}${recipe.dateText ? " · " + recipe.dateText : ""}`;
-    $("history-page-link").href = SnapStory.pageUrlFor(recipe);
+    $("history-page-link").href = recipe.remote ? remoteViewUrl(recipe) : SnapStory.pageUrlFor(recipe);
 
     const multi = total > 1;
     $("history-counter").textContent = multi
@@ -1453,6 +1470,21 @@
 
     const poster = $("history-poster");
     poster.style.opacity = "0.35";
+
+    // 只有云端记录（换设备后恢复出来的），直接用云端图片
+    if (recipe.remote) {
+      poster.src = recipe.remoteUrl;
+      poster.style.opacity = "1";
+      renderHistoryComments({ comments: [] });
+      if (window.SnapBackend && recipe.syncKey) {
+        SnapBackend.fetchComments(recipe.syncKey).then((list) => {
+          if (token !== historyToken) return;
+          renderHistoryComments({ comments: list });
+        }).catch(() => { /* 云端取不到就显示空 */ });
+      }
+      return;
+    }
+
     try {
       const canvas = document.createElement("canvas");
       await SnapStory.renderPoster(canvas, recipe);
@@ -1503,51 +1535,99 @@
     zone.addEventListener("pointercancel", () => { tracking = false; });
   })();
 
-  async function openGallery() {
-    const token = ++galleryToken;
-    showGalleryList();
-    $("gallery-modal").classList.remove("hidden");
+  function renderGalleryItems(items, token) {
     const grid = $("gallery-grid");
     grid.innerHTML = "";
-    const items = SnapStory.listPosters();
-    galleryItems = items;
-    $("gallery-empty").classList.toggle("hidden", items.length > 0);
 
-    for (let idx = 0; idx < items.length; idx += 1) {
-      const recipe = items[idx];
-      if (token !== galleryToken) return;
+    items.forEach((item, idx) => {
       const card = document.createElement("button");
       card.className = "gallery-item";
       card.type = "button";
-      card.setAttribute("aria-label", `查看 ${recipe.title || "海报"} ${recipe.dateText || ""}`);
+      card.setAttribute("aria-label", `查看 ${item.title || "海报"} ${item.dateText || ""}`);
+
+      const meta = document.createElement("span");
+      meta.className = "gallery-meta";
+      const count = Array.isArray(item.comments) ? item.comments.length : 0;
+      const sub = item.remote
+        ? (item.dateText ? `${item.dateText} · 云端` : "云端保存")
+        : `${item.dateText || ""} · ${count} 条留言`;
+      meta.innerHTML = `<strong>${escapeHtml(item.title || "美好时光")}</strong><small>${escapeHtml(sub)}</small>`;
+
+      card.addEventListener("click", () => openHistoryAt(idx));
+      grid.appendChild(card);
+
+      if (item.remote) {
+        const img = document.createElement("img");
+        img.className = "gallery-thumb";
+        img.loading = "lazy";
+        img.alt = "海报";
+        img.src = item.remoteUrl;
+        card.insertBefore(img, meta);
+        return;
+      }
 
       const thumb = document.createElement("canvas");
       thumb.className = "gallery-thumb";
       thumb.width = 270;
       thumb.height = 455;
+      card.insertBefore(thumb, meta);
 
-      const meta = document.createElement("span");
-      meta.className = "gallery-meta";
-      meta.innerHTML = `<strong>${escapeHtml(recipe.title || "美好时光")}</strong><small>${escapeHtml(recipe.dateText || "")} · ${(recipe.comments || []).length} 条留言</small>`;
+      (async () => {
+        try {
+          const full = document.createElement("canvas");
+          await SnapStory.renderPoster(full, item);
+          if (token !== galleryToken) return;
+          thumb.getContext("2d").drawImage(full, 0, 0, thumb.width, thumb.height);
+        } catch (e) {
+          const img = new Image();
+          img.onload = () => {
+            try { thumb.getContext("2d").drawImage(img, 0, 0, thumb.width, thumb.height); } catch (e2) { /* 忽略 */ }
+          };
+          img.src = item.photo || "";
+        }
+      })();
+    });
+  }
 
-      card.appendChild(thumb);
-      card.appendChild(meta);
-      card.addEventListener("click", () => openHistoryAt(idx));
-      grid.appendChild(card);
+  async function openGallery() {
+    const token = ++galleryToken;
+    showGalleryList();
+    $("gallery-modal").classList.remove("hidden");
 
-      try {
-        const full = document.createElement("canvas");
-        await SnapStory.renderPoster(full, recipe);
-        if (token !== galleryToken) return;
-        thumb.getContext("2d").drawImage(full, 0, 0, thumb.width, thumb.height);
-      } catch (e) {
-        const img = new Image();
-        img.onload = () => {
-          try { thumb.getContext("2d").drawImage(img, 0, 0, thumb.width, thumb.height); } catch (e2) { /* 忽略 */ }
-        };
-        img.src = recipe.photo || "";
-      }
+    // 先渲染本机海报，保证后端不通时也能正常用
+    const local = SnapStory.listPosters();
+    galleryItems = local;
+    $("gallery-empty").classList.toggle("hidden", local.length > 0);
+    renderGalleryItems(local, token);
+
+    // 再异步补充云端海报：换设备后输入同一身份码也能看到
+    if (!window.SnapBackend || !SnapBackend.isConfigured()) return;
+    let remote = [];
+    try {
+      remote = await SnapBackend.listPosters(SnapStory.getUserId());
+    } catch (e) {
+      remote = [];
     }
+    if (token !== galleryToken || !remote.length) return;
+
+    const seen = new Set(local.map((r) => r.syncKey).filter(Boolean));
+    const extra = remote
+      .filter((p) => p.syncKey && !seen.has(p.syncKey))
+      .map((p) => ({
+        id: "cloud-" + p.syncKey,
+        syncKey: p.syncKey,
+        remote: true,
+        remoteUrl: p.url,
+        createdAt: Number(p.meta && p.meta.createdAt) || p.at || 0,
+        title: (p.meta && p.meta.title) || "云端保存的海报",
+        dateText: (p.meta && p.meta.dateText) || (p.at ? new Date(p.at).toLocaleDateString("zh-CN") : ""),
+        comments: []
+      }));
+    if (!extra.length) return;
+
+    galleryItems = local.concat(extra).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+    $("gallery-empty").classList.add("hidden");
+    renderGalleryItems(galleryItems, token);
   }
 
   $("gallery-btn").addEventListener("click", openGallery);
