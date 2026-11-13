@@ -11,6 +11,8 @@
   "use strict";
 
   const STORAGE_BASE = "snapstory.backend";
+  // 默认云端地址：首次打开即生效，用户无需填写
+  const DEFAULT_BASE = "https://ruiminlee.pythonanywhere.com";
   let baseUrl = "";
   let online = null;       // null=未探测, true/false
   let onlineExpire = 0;    // 探测结果缓存 30 秒
@@ -19,7 +21,12 @@
   function setLastError(msg) { lastError = msg || ""; }
 
   function readBase() {
-    try { return localStorage.getItem(STORAGE_BASE + ".base") || ""; } catch (e) { return ""; }
+    try {
+      const saved = localStorage.getItem(STORAGE_BASE + ".base");
+      // 从未设置过 → 用默认云端；用户点过「清除」→ 保存为空串，表示关闭云端
+      if (saved === null) return DEFAULT_BASE;
+      return saved;
+    } catch (e) { return DEFAULT_BASE; }
   }
   function writeBase(url) {
     try { localStorage.setItem(STORAGE_BASE + ".base", url); } catch (e) { /* 忽略 */ }

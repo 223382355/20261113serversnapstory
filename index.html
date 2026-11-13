@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#F7F2E8">
   <meta name="description" content="记忆相册 · 随手拍一张照片，选一种风格，生成一张带家人留言的纪念海报。">
   <title>记忆相册 · 把今天留成一幅画</title>
-  <link rel="stylesheet" href="style.css?v=20261113f">
+  <link rel="stylesheet" href="style.css?v=20261113g">
 </head>
 <body>
   <main class="app">
@@ -330,10 +330,10 @@
         <button class="btn btn-ghost" id="user-import-cancel" type="button">取消</button>
         <button class="btn btn-primary" id="user-import-confirm" type="button">确认导入</button>
       </div>
-      <label class="field-label" style="margin-top:16px">后端服务器地址（可选）</label>
-      <p class="modal-sub">填了之后，生成的海报会自动备份到这台服务器，家人扫码永久可见。不填则按原方式（本机保存 + 临时通道）。</p>
+      <label class="field-label" style="margin-top:16px">后端服务器地址（默认已配置）</label>
+      <p class="modal-sub">默认使用官方云端，生成的海报自动备份，家人扫码永久可见。也可以换成你自己的服务器；点「清除」则只用本机保存 + 临时通道。</p>
       <div class="row" style="align-items:center;gap:8px">
-        <input id="backend-url" type="url" placeholder="例如：http://你的电脑IP:8765" style="flex:1;min-width:0;font-size:15px;padding:10px">
+        <input id="backend-url" type="url" placeholder="https://ruiminlee.pythonanywhere.com" style="flex:1;min-width:0;font-size:15px;padding:10px">
         <button class="btn btn-ghost" id="backend-test" type="button">测试</button>
       </div>
       <div class="row">
@@ -350,10 +350,10 @@
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
   <script src="qrcode.js"></script>
-  <script src="poster.js?v=20261113f"></script>
-  <script src="sync.js?v=20261113f"></script>
-  <script src="backend.js?v=20261113f"></script>
-  <script src="voice.js?v=20261113f"></script>
-  <script src="app.js?v=20261113f"></script>
+  <script src="poster.js?v=20261113g"></script>
+  <script src="sync.js?v=20261113g"></script>
+  <script src="backend.js?v=20261113g"></script>
+  <script src="voice.js?v=20261113g"></script>
+  <script src="app.js?v=20261113g"></script>
 </body>
 </html>
